@@ -1,0 +1,215 @@
+"""
+# COCO format
+{
+    "images": [
+        {
+            "file_name": "000000239492.png",
+            "height": 1536,
+            "width": 2048,
+            "id": 239492
+        },
+    ...
+    ],
+    "annotations": [
+        {
+            "segmentation": [  # CASE "iscrowd"=0
+                [
+                    510.66,  # x1
+                    423.01,  # y1
+                    511.72,  # x2
+                    420.03,  # y2
+                    ...
+                ],
+                ...  # When containing a single annotated object, a segmentation can still contain multiple polygons if the object is occluded
+            ],
+            "segmentation": {  # CASE "iscrowd"=1
+                "counts": [  # Run length encoding
+                    18136,  # Number of zeros (going from top to bottom and wrapping)
+                    6,      # Number of ones
+                    472,    # Number of zeros
+                    9,      # Number of ones
+                    ...
+                ],
+                "size": [  # Size of the binary mask
+                    427,  # height
+                    640   # width
+                ]
+            },
+            "area": 702.1057499999998,  # Area of the segmentation
+            "iscrowd": 0,  # Whether the annotation refers to a single object or multiple ones at once. NOTE: "iscrowd"=0 does NOT necessarily mean that there's a single object in the image. Rather, it means that this segmentation mask refers to a single object. On the other hand, "iscrowd"=1 means that this segmentation mask covers MULTIPLE objects, which in turn implies that you can't discern individual objects. The value of "iscrowd" determines the format of a segmentation (see above)
+            "image_id": 239492,
+            "bbox": [
+                473.07,  # x top left (or column number)
+                395.93,  # y top left (or row number)
+                38.65,   # width
+                28.67    # height
+            ],
+            "category_id": 1,
+            "id": 942
+        },
+        ...
+    ],
+    "categories": [
+        {
+            "supercategory": "pool object",
+            "id": 1,
+            "name": "ball"
+        },
+        ...
+    ]
+}
+"""
+
+# *_bbox, in this format: center_x, center_y, width, height
+# *_location (in meters)(of the center)
+# *_vertices, in this order: top, right, left, bottom (I think)
+# *_mask_completeDDDD.png, where D=digit
+# *_mask_visibleDDDD.png, where D=digit
+# *_outline_completeDDDD.png, where D=digit
+# *_outline_visibleDDDD.png, where D=digit
+
+from pathlib import Path
+import argparse
+import json
+
+import numpy as np
+import cv2
+
+parser = argparse.ArgumentParser()
+parser.add_argument('-i', '--input-directory', required=True)
+parser.add_argument('-r', '--render', required=True)
+parser.add_argument('-c', '--category-id', type=int, required=True)
+parser.add_argument('-o', '--output-dir', required=True)
+args = parser.parse_args()
+
+def make_bbox_annotation(filepath):
+    row, col, w, h = np.loadtxt(filepath)
+    # Convert from (row, column) coordinates to (x, y) coordinates
+    return col, row, w, h
+
+
+def make_location_annotation(filepath):
+    x_meters, y_meters = np.loadtxt(filepath)
+    return x_meters, y_meters
+
+
+def make_vertices_annotation(filepath):
+    vertices = np.loadtxt(filepath)
+    vertices_flattened = vertices.reshape((-1,))
+    return vertices_flattened.tolist()
+
+
+def mask_to_run_length_encoding(mask):
+
+    flat_mask = mask.ravel(order='F').tolist()
+
+    run_length_encoding = []
+    target = 1
+    if flat_mask[0] == 1:
+        run_length_encoding.append(0)
+        target = 0
+
+    previous_target_index = 0
+    while True:
+        try:
+            target_index = flat_mask.index(target, previous_target_index)
+            
+        except ValueError:
+            target_index = len(flat_mask)
+            break
+
+        finally:
+            run_length_encoding.append(target_index - previous_target_index)
+            target = int(not target)
+            previous_target_index = target_index
+
+    return run_length_encoding
+
+
+def make_mask_annotation(filepath):
+    image = cv2.imread(str(filepath), 0)
+    return mask_to_run_length_encoding(image / 255.0)
+
+
+def make_outline_annotation(filepath):
+
+    image = cv2.imread(str(filepath), 0)
+
+    # Get coordinates of nonzero pixels
+    _, image_binary = cv2.threshold(
+        image,  # Source image
+        1,      # Threshold value
+        255,    # Max value. If pixel_intensity > threshold, then it 
+                # becomes max_value, else it becomes 0
+        cv2.THRESH_BINARY
+    )
+    pixel_mask = np.argwhere(image_binary != 0)
+    
+    # Convert from (row, column) coordinates to (x, y) coordinates
+    pixel_mask = np.fliplr(pixel_mask)
+    
+    pixel_mask_flattened = pixel_mask.reshape((-1,))
+    return pixel_mask_flattened.tolist()
+
+
+render_path = Path(args.render)
+img_name = render_path.stem
+
+input_dir = Path(args.input_directory)
+
+bbox_files = !ls {str(input_dir)} | grep _bbox
+location_files = !ls {str(input_dir)} | grep _location
+vertices_files = !ls {str(input_dir)} | grep _vertices
+mask_complete_files = !ls {str(input_dir)} | grep _mask_complete
+mask_visible_files = !ls {str(input_dir)} | grep _mask_visible
+outline_complete_files = !ls {str(input_dir)} | grep _outline_complete
+outline_visible_files = !ls {str(input_dir)} | grep _outline_visible
+
+annotations = []
+for i, _ in enumerate(bbox_files):
+
+    annotations.append({
+        'bbox': make_bbox_annotation(
+            input_dir / bbox_files[i]
+        ) if i < len(bbox_files) else [],
+
+        'location': make_location_annotation(
+            input_dir / location_files[i]
+        ) if i < len(location_files) else [],
+        
+        'vertices': make_vertices_annotation(
+            input_dir / vertices_files[i]
+        ) if i < len(vertices_files) else [],
+        
+        'mask_complete': make_mask_annotation(
+            input_dir / mask_complete_files[i]
+        ) if i < len(mask_complete_files) else [],
+        
+        'mask_visible': make_mask_annotation(
+            input_dir / mask_visible_files[i]
+        ) if i < len(mask_visible_files) else [],
+        
+        'outline_complete': make_outline_annotation(
+            input_dir / outline_complete_files[i]
+        ) if i < len(outline_complete_files) else [],
+        
+        'outline_visible': make_outline_annotation(
+            input_dir / outline_visible_files[i]
+        ) if i < len(outline_visible_files) else  [],
+
+        'image_id': int(img_name),
+        'category_id': args.category_id,
+        'id': i
+    })
+
+# Save annotations
+annotations_dict = {
+    'annotations': annotations
+}
+
+output_dir = Path(args.output_dir)
+with open(output_dir / f'{img_name}_annotations_category_{args.category_id}.json', 'w') as file_pointer:
+    json.dump(annotations_dict, file_pointer)
+
+# Remove unnecessary files
+!rm -fr {str(input_dir)}
