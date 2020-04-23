@@ -120,9 +120,16 @@ scene.render.engine = 'CYCLES'
 scene.render.resolution_x = args.render_width
 scene.render.resolution_y = args.render_height
 scene.render.resolution_percentage = 100
-scene.render.tile_x = 256
-scene.render.tile_y = 256
+scene.render.tile_x = 128
+scene.render.tile_y = 128
+
 scene.cycles.device = 'GPU'
+preferences = bpy.context.preferences
+cycles_preferences = preferences.addons['cycles'].preferences
+cycles_preferences.compute_device_type = 'CUDA'
+for device in cycles_preferences.get_devices_for_type('CUDA'):
+    device.use = True
+
 scene.cycles.samples = args.render_samples
 scene.cycles.max_bounces = 1
 scene.cycles.caustics_reflective = False

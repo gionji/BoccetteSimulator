@@ -17,7 +17,7 @@ DIAMONDS_CATEGORY_ID=2
 
 RENDER_WIDTH=1024
 RENDER_HEIGHT=768
-RENDER_SAMPLES=64
+RENDER_SAMPLES=128
 
 function create_diamond_annotations {
     
@@ -28,6 +28,8 @@ function create_diamond_annotations {
         -b \
         --python $LABELLER_SCRIPT \
         -- \
+        -rh $RENDER_HEIGHT \
+        -rw $RENDER_WIDTH \
         -cn Camera_sinistra \
         -p fisheye_equisolid \
         -c T0_Diamanti \
@@ -84,7 +86,7 @@ function create_ball_annotations {
         -o $1
 }
 
-N_IMAGES=1
+N_IMAGES=500
 DATASET_DIR=$BLENDER_PROJECT_HOME/dataset
 for (( i=1; i<=$N_IMAGES; i++ )); do
     IMG_ID=$(printf "%06d" $i)
