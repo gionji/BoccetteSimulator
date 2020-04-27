@@ -8,12 +8,14 @@ LABELLER_SCRIPT=$SCRIPTS_HOME/label_image.py
 FORMATTER_SCRIPT=$SCRIPTS_HOME/format_annotations.ipy
 
 # Flags for specifying which kind of annotations to output
-MASKS_FLAG=
-OUTLINES_FLAG=--no-outlines
-COMPLETE_MASKS_FLAG=
+MASKS_FLAG=                  # --no-masks or empty
+OUTLINES_FLAG=--no-outlines  # --no-outlines or empty
+COMPLETE_MASKS_FLAG=         # --individual-renders or empty
 
-BALLS_CATEGORY_ID=1
-DIAMONDS_CATEGORY_ID=2
+RED_BALLS_CATEGORY_ID=0
+BLUE_BALLS_CATEGORY_ID=1
+WHITE_BALLS_CATEGORY_ID=2
+DIAMONDS_CATEGORY_ID=3
 
 RENDER_WIDTH=1024
 RENDER_HEIGHT=768
@@ -26,13 +28,13 @@ function create_diamond_annotations {
     mkdir -p $DIAMONDS_DIR
     blender $BLEND_FILE \
         -b \
-        --python $LABELLER_SCRIPT \
-        -- \
+        --python $LABELLER_SCRIPT -- \
         -rh $RENDER_HEIGHT \
         -rw $RENDER_WIDTH \
         -cn Camera_sinistra \
         -p fisheye_equisolid \
         -c T0_Diamanti \
+        -cid $DIAMONDS_CATEGORY_ID \
         -cs Panno \
         $MASKS_FLAG \
         $OUTLINES_FLAG \
@@ -42,9 +44,9 @@ function create_diamond_annotations {
     # Refine annotations for the diamonds
     ipython3 $FORMATTER_SCRIPT -- \
         -i $DIAMONDS_DIR \
-        -r $2 \
-        -c $DIAMONDS_CATEGORY_ID \
-        -o $1
+        -o $1 \
+        --image-width $RENDER_WIDTH \
+        --image-height $RENDER_HEIGHT
 }
 
 function create_ball_annotations {
@@ -52,8 +54,7 @@ function create_ball_annotations {
     # Scramble the balls over the table
     blender $BLEND_FILE \
         -b \
-        --python $SCRAMBLER_SCRIPT \
-        -- \
+        --python $SCRAMBLER_SCRIPT -- \
         -o $BLEND_FILE_SCRAMBLED
 
     # Create raw annotations for the balls
@@ -67,7 +68,8 @@ function create_ball_annotations {
         -rs $RENDER_SAMPLES \
         -cn Camera_sinistra \
         -p fisheye_equisolid \
-        -c T0_Palle \
+        -c T0_Palle_rosse T0_Palle_blu T0_Palle_bianche \
+        -cid $RED_BALLS_CATEGORY_ID $BLUE_BALLS_CATEGORY_ID $WHITE_BALLS_CATEGORY_ID \
         -cs Panno \
         $MASKS_FLAG \
         $OUTLINES_FLAG \
@@ -81,17 +83,17 @@ function create_ball_annotations {
     # Refine annotations for the balls
     ipython3 $FORMATTER_SCRIPT -- \
         -i $BALLS_DIR \
-        -r $2\
-        -c $BALLS_CATEGORY_ID \
-        -o $1
+        -o $1 \
+        --image-width $RENDER_WIDTH \
+        --image-height $RENDER_HEIGHT \
+        --image-name $3
 }
 
 N_IMAGES=500
-DATASET_DIR=$BLENDER_PROJECT_HOME/dataset
+OUTPUT_DIR=$BLENDER_PROJECT_HOME/dataset
 for (( i=1; i<=$N_IMAGES; i++ )); do
     IMG_ID=$(printf "%06d" $i)
-    OUTPUT_DIR=$DATASET_DIR/img_$IMG_ID
     RENDER_PATH=$OUTPUT_DIR/$IMG_ID.png
-    create_ball_annotations $OUTPUT_DIR $RENDER_PATH
+    create_ball_annotations $OUTPUT_DIR $RENDER_PATH $IMG_ID
 done
-create_diamond_annotations $DATASET_DIR $RENDER_PATH
+create_diamond_annotations $OUTPUT_DIR

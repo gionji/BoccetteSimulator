@@ -77,9 +77,10 @@ import cv2
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-i', '--input-directory', required=True)
-parser.add_argument('-r', '--render', required=True)
-parser.add_argument('-c', '--category-id', type=int, required=True)
 parser.add_argument('-o', '--output-dir', required=True)
+parser.add_argument('-iw', '--image-width', type=int, required=True)
+parser.add_argument('-ih', '--image-height', type=int, required=True)
+parser.add_argument('-in', '--image-name', default=None)
 args = parser.parse_args()
 
 def make_bbox_annotation(filepath):
@@ -152,11 +153,11 @@ def make_outline_annotation(filepath):
     return pixel_mask_flattened.tolist()
 
 
-render_path = Path(args.render)
-img_name = render_path.stem
+img_name = args.image_name or ''
 
 input_dir = Path(args.input_directory)
 
+category_id_files = !ls {str(input_dir)} | grep _category_id
 bbox_files = !ls {str(input_dir)} | grep _bbox
 location_files = !ls {str(input_dir)} | grep _location
 vertices_files = !ls {str(input_dir)} | grep _vertices
@@ -197,8 +198,12 @@ for i, _ in enumerate(bbox_files):
             input_dir / outline_visible_files[i]
         ) if i < len(outline_visible_files) else  [],
 
-        'image_id': int(img_name),
-        'category_id': args.category_id,
+        'image_id': img_name,
+        'image_width': args.image_width,
+        'image_height': args.image_height,
+        'category_id': int(np.loadtxt(
+            input_dir / category_id_files[i]
+        )) if i < len(category_id_files) else -1,
         'id': i
     })
 
@@ -208,7 +213,7 @@ annotations_dict = {
 }
 
 output_dir = Path(args.output_dir)
-with open(output_dir / f'{img_name}_annotations_category_{args.category_id}.json', 'w') as file_pointer:
+with open(output_dir / f'{img_name}_annotations.json', 'w') as file_pointer:
     json.dump(annotations_dict, file_pointer)
 
 # Remove unnecessary files

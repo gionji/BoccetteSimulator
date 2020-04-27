@@ -63,6 +63,12 @@ parser.add_argument(
     default=['Balls']
 )
 parser.add_argument(
+    '-cid', '--category-ids', 
+    nargs='+', 
+    type=int,
+    default=[0]
+)
+parser.add_argument(
     '-cs', '--reference-coordinate-system', 
     type=str, 
     default=None
@@ -110,8 +116,10 @@ projections = {
 projection = projections[args.lens_projection]
 
 objects = []
-for collection_name in args.collections:
-    objects.extend(bpy.data.collections[collection_name].all_objects[:])
+for collection_name, category_id in zip(args.collections, args.category_ids):
+    objects.extend([
+        (obj, category_id) for obj in bpy.data.collections[collection_name].all_objects[:]
+    ])
 
 scene = bpy.context.scene
 
@@ -122,19 +130,19 @@ scene.render.resolution_y = args.render_height
 scene.render.resolution_percentage = 100
 scene.render.tile_x = 128
 scene.render.tile_y = 128
+scene.cycles.samples = args.render_samples
+scene.cycles.max_bounces = 1
+scene.cycles.caustics_reflective = False
+scene.cycles.caustics_refractive = False
+scene.view_layers['View Layer'].cycles.use_denoising = True
 
+# Set GPU settings
 scene.cycles.device = 'GPU'
 preferences = bpy.context.preferences
 cycles_preferences = preferences.addons['cycles'].preferences
 cycles_preferences.compute_device_type = 'CUDA'
 for device in cycles_preferences.get_devices_for_type('CUDA'):
     device.use = True
-
-scene.cycles.samples = args.render_samples
-scene.cycles.max_bounces = 1
-scene.cycles.caustics_reflective = False
-scene.cycles.caustics_refractive = False
-scene.view_layers['View Layer'].cycles.use_denoising = True
 
 # Use nodes in compositing
 scene.use_nodes = True
@@ -215,7 +223,7 @@ def create_node_pipeline_for_object(
 if args.individual_renders:
 
     # Hide all objects
-    for obj in objects:
+    for obj, _ in objects:
         obj.cycles_visibility.camera = False
 
     # We don't care about the quality of this render: all we care about 
@@ -226,7 +234,7 @@ if args.individual_renders:
     original_rendering_samples = scene.cycles.samples
     scene.cycles.samples = 1
     scene.view_layers['View Layer'].cycles.use_denoising = False
-    for obj in objects:
+    for obj, _ in objects:
 
         # Make this object (and only this one) visible
         obj.cycles_visibility.camera = True
@@ -261,7 +269,7 @@ if args.individual_renders:
     scene.view_layers['View Layer'].cycles.use_denoising = True
 
 
-for obj in objects:
+for obj, _ in objects:
     
     obj.cycles_visibility.camera = True
 
@@ -318,7 +326,7 @@ if args.reference_coordinate_system is not None:
     ])
 
 camera_obj = bpy.data.objects[args.camera_name]
-for obj in objects:
+for obj, category_id in objects:
 
     # Location of the object in the 3D scene
     location = np.array([
@@ -351,15 +359,12 @@ for obj in objects:
     min_col_index = np.min(vertex_coordinates[:, 1])
     max_col_index = np.max(vertex_coordinates[:, 1])
 
-    # bounding_box_center = (
-    #     (min_row_index + max_row_index) // 2,
-    #     (min_col_index + max_col_index) // 2
-    # )
     bounding_box_width = max_col_index - min_col_index + 1
     bounding_box_height = max_row_index - min_row_index + 1
 
     # Save annotations to disk
     output_dir = Path(args.annotations_output_dir)
+    np.savetxt(str(output_dir / f'{obj.name}_category_id'), np.array([category_id]))
     np.savetxt(str(output_dir / f'{obj.name}_location'), location)
     np.savetxt(str(output_dir / f'{obj.name}_bbox'), np.array([
         min_row_index,
