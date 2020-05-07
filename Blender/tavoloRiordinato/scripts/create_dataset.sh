@@ -89,7 +89,7 @@ function create_ball_annotations {
         --image-name $3
 }
 
-N_IMAGES=500
+N_IMAGES=${1:-500}
 OUTPUT_DIR=$BLENDER_PROJECT_HOME/dataset
 for (( i=1; i<=$N_IMAGES; i++ )); do
     IMG_ID=$(printf "%06d" $i)
